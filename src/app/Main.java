@@ -38,7 +38,7 @@ public class Main{
             }
         }
     }
-
+    // test - working
     private static void openAccount(Scanner scanner, BankService bankService) {
         System.out.println("Must Enter Customer Details to Open an Account : ");
         System.out.println("Customer Name: ");
