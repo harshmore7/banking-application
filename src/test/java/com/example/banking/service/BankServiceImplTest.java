@@ -1,75 +1,49 @@
 package com.example.banking.service;
 
-import com.example.banking.dto.auth.LoginRequest;
-import com.example.banking.dto.auth.RegisterRequest;
-import com.example.banking.model.Customer;
+import com.example.banking.model.Account;
+import com.example.banking.repository.AccountRepository;
+import com.example.banking.repository.TransactionRepository;
+import com.example.banking.service.impl.BankServiceImpl;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.domain.PageRequest;
-
-import java.math.BigDecimal;
+import org.springframework.web.server.ResponseStatusException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
-@SpringBootTest
 class BankServiceImplTest {
 
-    @Autowired
-    private AuthService authService;
-
-    @Autowired
-    private BankService bankService;
+    private final BankService bankService = new BankServiceImpl(new AccountRepository(), new TransactionRepository());
 
     @Test
-    void registerLoginAndOpenSecondAccount() {
-        var registerResponse = authService.register(new RegisterRequest(
-                "Alice Doe",
-                "alice@bank.com",
-                "alice1",
-                "Password@123",
-                "+12345678901",
-                "SAVINGS",
-                new BigDecimal("1000.00")
-        ));
+    void openAccountAndDepositAndWithdraw() {
+        Account account = bankService.openAccount("Alice", "alice@example.com", "savings", 100);
 
-        var login = authService.login(new LoginRequest("alice1", "Password@123"));
-        Customer customer = authService.validateToken(login.accessToken());
+        assertEquals("AC000001", account.getAccountNumber());
+        assertEquals(100.0, account.getBalance());
 
-        var secondAccount = bankService.openAccount(customer, "CURRENT", new BigDecimal("500.00"));
+        bankService.deposit(account.getAccountNumber(), 50.0);
+        assertEquals(150.0, account.getBalance());
 
-        assertEquals(registerResponse.customerId(), customer.getCustomerId());
-        assertFalse(secondAccount.getAccountNumber().isBlank());
-        assertEquals(2, bankService.listMyAccounts(customer.getCustomerId()).size());
+        bankService.withdraw(account.getAccountNumber(), 70.0);
+        assertEquals(80.0, account.getBalance());
     }
 
     @Test
-    void transferShouldBeIdempotentWithKey() {
-        var bob = authService.register(new RegisterRequest(
-                "Bob Doe",
-                "bob@bank.com",
-                "bob1",
-                "Password@123",
-                "+12345678902",
-                "SAVINGS",
-                new BigDecimal("300.00")
-        ));
-        var carol = authService.register(new RegisterRequest(
-                "Carol Doe",
-                "carol@bank.com",
-                "carol1",
-                "Password@123",
-                "+12345678903",
-                "SAVINGS",
-                new BigDecimal("100.00")
-        ));
+    void transferShouldMoveFundsBetweenAccounts() {
+        Account from = bankService.openAccount("Bob", "bob@example.com", "current", 200);
+        Account to = bankService.openAccount("Carol", "carol@example.com", "savings", 20);
 
-        String m1 = bankService.transfer(bob.customerId(), bob.primaryAccountNumber(), carol.primaryAccountNumber(), new BigDecimal("50.00"), "idem-123");
-        String m2 = bankService.transfer(bob.customerId(), bob.primaryAccountNumber(), carol.primaryAccountNumber(), new BigDecimal("50.00"), "idem-123");
+        bankService.transfer(from.getAccountNumber(), to.getAccountNumber(), 40);
 
-        assertEquals(m1, m2);
-        var page = bankService.getStatement(bob.customerId(), bob.primaryAccountNumber(), null, null, PageRequest.of(0, 20));
-        assertEquals(1, page.getTotalElements());
+        assertEquals(160.0, from.getBalance());
+        assertEquals(60.0, to.getBalance());
+    }
+
+    @Test
+    void withdrawShouldFailWhenInsufficientBalance() {
+        Account account = bankService.openAccount("Dave", "dave@example.com", "savings", 10);
+
+        assertThrows(ResponseStatusException.class,
+                () -> bankService.withdraw(account.getAccountNumber(), 50));
     }
 }
