@@ -1,26 +1,9 @@
 package com.example.banking.model;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-
-@Entity
-@Table(name = "customers")
 public class Customer {
-
-    @Id
-    @Column(nullable = false, updatable = false)
-    private String customerId;
-
-    @Column(nullable = false)
-    private String name;
-
-    @Column(nullable = false, unique = true)
-    private String email;
-
-    protected Customer() {
-    }
+    private final String customerId;
+    private final String name;
+    private final String email;
 
     public Customer(String customerId, String name, String email) {
         this.customerId = customerId;

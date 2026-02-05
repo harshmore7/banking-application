@@ -1,37 +1,12 @@
 package com.example.banking.model;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
-
-import java.math.BigDecimal;
-
-@Entity
-@Table(name = "accounts")
 public class Account {
+    private final String accountNumber;
+    private final Customer customer;
+    private final String accountType;
+    private double balance;
 
-    @Id
-    @Column(nullable = false, updatable = false)
-    private String accountNumber;
-
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
-    @JoinColumn(name = "customer_id", nullable = false)
-    private Customer customer;
-
-    @Column(nullable = false)
-    private String accountType;
-
-    @Column(nullable = false, precision = 19, scale = 2)
-    private BigDecimal balance;
-
-    protected Account() {
-    }
-
-    public Account(String accountNumber, Customer customer, String accountType, BigDecimal balance) {
+    public Account(String accountNumber, Customer customer, String accountType, double balance) {
         this.accountNumber = accountNumber;
         this.customer = customer;
         this.accountType = accountType;
@@ -50,15 +25,15 @@ public class Account {
         return accountType;
     }
 
-    public BigDecimal getBalance() {
+    public double getBalance() {
         return balance;
     }
 
-    public void deposit(BigDecimal amount) {
-        this.balance = this.balance.add(amount);
+    public void deposit(double amount) {
+        this.balance += amount;
     }
 
-    public void withdraw(BigDecimal amount) {
-        this.balance = this.balance.subtract(amount);
+    public void withdraw(double amount) {
+        this.balance -= amount;
     }
 }

@@ -5,77 +5,81 @@ import com.example.banking.model.Customer;
 import com.example.banking.model.Transaction;
 import com.example.banking.model.TransactionType;
 import com.example.banking.repository.AccountRepository;
-import com.example.banking.repository.CustomerRepository;
 import com.example.banking.repository.TransactionRepository;
 import com.example.banking.service.BankService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
-@Transactional
 public class BankServiceImpl implements BankService {
-
     private final AccountRepository accountRepository;
-    private final CustomerRepository customerRepository;
     private final TransactionRepository transactionRepository;
+    private final AtomicInteger accountCounter = new AtomicInteger(0);
 
-    public BankServiceImpl(AccountRepository accountRepository,
-                           CustomerRepository customerRepository,
-                           TransactionRepository transactionRepository) {
+    public BankServiceImpl(AccountRepository accountRepository, TransactionRepository transactionRepository) {
         this.accountRepository = accountRepository;
-        this.customerRepository = customerRepository;
         this.transactionRepository = transactionRepository;
     }
 
     @Override
-    public Account openAccount(String name, String email, String accountType, BigDecimal initialDeposit) {
+    public synchronized Account openAccount(String name, String email, String accountType, double initialDeposit) {
         String customerId = UUID.randomUUID().toString();
-        Customer customer = customerRepository.save(new Customer(customerId, name, email));
+        Customer customer = new Customer(customerId, name, email);
+        String accountNumber = String.format("AC%06d", accountCounter.incrementAndGet());
 
-        String accountNumber = String.format("AC%06d", accountRepository.count() + 1);
-        Account account = accountRepository.save(new Account(
-                accountNumber,
-                customer,
-                accountType.toUpperCase(Locale.ROOT),
-                BigDecimal.ZERO
-        ));
+        Account account = new Account(accountNumber, customer, accountType.toUpperCase(Locale.ROOT), 0);
+        accountRepository.save(account);
 
-        if (initialDeposit != null && initialDeposit.compareTo(BigDecimal.ZERO) > 0) {
-            return deposit(accountNumber, initialDeposit);
+        if (initialDeposit > 0) {
+            deposit(accountNumber, initialDeposit);
         }
 
         return account;
     }
 
     @Override
-    public Account deposit(String accountNumber, BigDecimal amount) {
+    public synchronized Account deposit(String accountNumber, double amount) {
         Account account = getExistingAccount(accountNumber);
         account.deposit(amount);
-        recordTransaction(TransactionType.DEPOSIT, account, amount, "Deposit");
-        return accountRepository.save(account);
+        transactionRepository.save(new Transaction(
+                UUID.randomUUID().toString(),
+                TransactionType.DEPOSIT,
+                accountNumber,
+                amount,
+                LocalDateTime.now(),
+                "Deposit"
+        ));
+        return account;
     }
 
     @Override
-    public Account withdraw(String accountNumber, BigDecimal amount) {
+    public synchronized Account withdraw(String accountNumber, double amount) {
         Account account = getExistingAccount(accountNumber);
-        if (account.getBalance().compareTo(amount) < 0) {
+        if (account.getBalance() < amount) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Insufficient balance");
         }
         account.withdraw(amount);
-        recordTransaction(TransactionType.WITHDRAW, account, amount, "Withdraw");
-        return accountRepository.save(account);
+        transactionRepository.save(new Transaction(
+                UUID.randomUUID().toString(),
+                TransactionType.WITHDRAW,
+                accountNumber,
+                amount,
+                LocalDateTime.now(),
+                "Withdraw"
+        ));
+        return account;
     }
 
     @Override
-    public void transfer(String fromAccount, String toAccount, BigDecimal amount) {
+    public synchronized void transfer(String fromAccount, String toAccount, double amount) {
         if (fromAccount.equals(toAccount)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Source and destination accounts must differ");
         }
@@ -83,55 +87,46 @@ public class BankServiceImpl implements BankService {
         Account source = getExistingAccount(fromAccount);
         Account destination = getExistingAccount(toAccount);
 
-        if (source.getBalance().compareTo(amount) < 0) {
+        if (source.getBalance() < amount) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Insufficient balance");
         }
 
         source.withdraw(amount);
         destination.deposit(amount);
 
-        accountRepository.save(source);
-        accountRepository.save(destination);
-
-        recordTransaction(TransactionType.TRANSFER_OUT, source, amount, "Transfer to " + toAccount);
-        recordTransaction(TransactionType.TRANSFER_IN, destination, amount, "Transfer from " + fromAccount);
+        LocalDateTime now = LocalDateTime.now();
+        transactionRepository.save(new Transaction(UUID.randomUUID().toString(), TransactionType.TRANSFER_OUT, fromAccount, amount, now,
+                "Transfer to " + toAccount));
+        transactionRepository.save(new Transaction(UUID.randomUUID().toString(), TransactionType.TRANSFER_IN, toAccount, amount, now,
+                "Transfer from " + fromAccount));
     }
 
     @Override
-    @Transactional(readOnly = true)
     public List<Transaction> getStatement(String accountNumber) {
         getExistingAccount(accountNumber);
-        return transactionRepository.findByAccountAccountNumberOrderByTimestampDesc(accountNumber);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<Account> listAccounts() {
-        return accountRepository.findAll().stream()
-                .sorted((a, b) -> a.getAccountNumber().compareToIgnoreCase(b.getAccountNumber()))
+        return transactionRepository.findByAccountNumber(accountNumber).stream()
+                .sorted(Comparator.comparing(Transaction::getTimestamp).reversed())
                 .toList();
     }
 
     @Override
-    @Transactional(readOnly = true)
+    public List<Account> listAccounts() {
+        return accountRepository.findAll().stream()
+                .sorted(Comparator.comparing(Account::getAccountNumber))
+                .toList();
+    }
+
+    @Override
     public List<Account> searchByCustomerName(String name) {
-        return accountRepository.findByCustomerNameContainingIgnoreCaseOrderByAccountNumber(name);
+        String normalizedQuery = name.toLowerCase(Locale.ROOT).trim();
+        return accountRepository.findAll().stream()
+                .filter(account -> account.getCustomer().getName().toLowerCase(Locale.ROOT).contains(normalizedQuery))
+                .sorted(Comparator.comparing(Account::getAccountNumber))
+                .toList();
     }
 
     private Account getExistingAccount(String accountNumber) {
-        return accountRepository.findById(accountNumber)
+        return accountRepository.findByAccountNumber(accountNumber)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found: " + accountNumber));
-    }
-
-    private void recordTransaction(TransactionType type, Account account, BigDecimal amount, String note) {
-        Transaction transaction = new Transaction(
-                UUID.randomUUID().toString(),
-                type,
-                account,
-                amount,
-                LocalDateTime.now(),
-                note
-        );
-        transactionRepository.save(transaction);
     }
 }
