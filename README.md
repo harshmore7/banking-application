@@ -1,63 +1,51 @@
-# Banking API + Frontend (Sprint 2)
+# Banking Application API (Spring Boot)
 
-This repository now includes:
-- Spring Boot backend (`/src`)
-- React + Tailwind frontend (`/frontend`)
+A Spring Boot REST API for simple banking operations with:
+- **Swagger UI** documentation
+- **H2 in-memory database**
+- Layered architecture (controller/service/repository)
 
-The frontend is connected to backend APIs under `/api/v1`.
+## Tech Stack
+- Java 17
+- Spring Boot 3
+- Spring Web
+- Spring Data JPA
+- H2 Database
+- springdoc OpenAPI (Swagger UI)
 
-## Backend Highlights
-- JWT access token + refresh token auth
-- Idempotent transfers with `Idempotency-Key`
-- Global API error contract
-- Correlation IDs (`X-Correlation-Id`)
-- Actuator endpoints
-
-## Backend Run
+## Run the app
 ```bash
 mvn spring-boot:run
 ```
-Backend: `http://localhost:8080`
 
-## Frontend Run
-```bash
-cd frontend
-npm install
-npm run dev
-```
-Frontend: `http://localhost:5173`
+The app starts on `http://localhost:8080`.
 
-By default, frontend calls:
-- `http://localhost:8080/api/v1`
-
-Override with:
-```bash
-VITE_API_BASE_URL=http://localhost:8080/api/v1 npm run dev
-```
-
-## API Docs
+## Useful URLs
 - Swagger UI: `http://localhost:8080/swagger-ui.html`
 - OpenAPI JSON: `http://localhost:8080/api-docs`
+- H2 Console: `http://localhost:8080/h2-console`
+  - JDBC URL: `jdbc:h2:mem:bankdb`
+  - User: `sa`
+  - Password: *(empty)*
 
-## Frontend Features
-- Register and login
-- Load account overview
-- Make transfer (with optional idempotency key)
-- View recent statement entries
+## API Endpoints
+Base path: `/api/accounts`
 
-## Main API Endpoints (v1)
-Auth:
-- `POST /api/v1/auth/register`
-- `POST /api/v1/auth/login`
-- `POST /api/v1/auth/refresh`
+- `POST /api/accounts` - Open account
+- `POST /api/accounts/{accountNumber}/deposit` - Deposit
+- `POST /api/accounts/{accountNumber}/withdraw` - Withdraw
+- `POST /api/accounts/transfer` - Transfer
+- `GET /api/accounts` - List accounts
+- `GET /api/accounts/search?name=...` - Search by customer name
+- `GET /api/accounts/{accountNumber}/statement` - Account statement
 
-Accounts:
-- `GET /api/v1/accounts/me`
-- `POST /api/v1/accounts/transfer`
-- `GET /api/v1/accounts/{accountNumber}/statement?page=0&size=20`
-
-## Next Recommended Steps
-- Add frontend route protection and token refresh interceptor
-- Add React Query for caching/retries
-- Add E2E tests (Playwright/Cypress)
-- Replace H2 with PostgreSQL + Flyway
+## Sample Request
+### Open Account
+```json
+{
+  "name": "Alice",
+  "email": "alice@example.com",
+  "accountType": "SAVINGS",
+  "initialDeposit": 1500.00
+}
+```
